@@ -1,16 +1,6 @@
 /**
- *
- * This is an example of an NFT contract that uses the NFT-internals
- * helper functions to implement the ERC721 standard.
- *
- * This files does basically two things:
- * 1. It wraps the NFT-internals functions, manages the deserialize/serialize of the arguments and return values,
- *    and exposes them to the outside world.
- * 2. It implements some custom features that are not part of the ERC721 standard, like mint, burn or ownership.
- *
- * The NFT-internals functions are not supposed to be re-exported by this file.
+ * Single Collectible for the NFT Marketplace
  */
-
 import {
   Args,
   boolToByte,
@@ -31,9 +21,7 @@ import {
   _update,
   _transferFrom,
 } from './NFT-internals';
-import { onlyOwner } from '../utilities/ownership';
 import { isDeployingContract, Storage } from '@massalabs/massa-as-sdk';
-import { OWNER_KEY } from '../utilities/ownership-internal';
 
 export const BASE_URI_KEY = stringToBytes('BASE_URI');
 export const TOKEN_URI_KEY = stringToBytes('TOKEN_URI');
@@ -71,8 +59,7 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
   _constructor(name, symbol);
   Storage.set(BASE_URI_KEY, stringToBytes(baseURI));
   Storage.set(TOKEN_URI_KEY, stringToBytes(tokenURI));
-  Storage.set(OWNER_KEY, ownerAddress);
-  _update(ownerAddress, tokenID, ''); // mint
+  _update(ownerAddress, tokenID, ''); // Mint for caller ( tokenID: 1)
 }
 
 export function name(): string {
@@ -92,16 +79,6 @@ export function tokenURI(_args: StaticArray<u8>): StaticArray<u8> {
   const uri = bytesToString(Storage.get(TOKEN_URI_KEY));
   const key = uri + tokenId;
   return stringToBytes(key);
-}
-
-export function _setTokenURI(_args: StaticArray<u8>): void {
-  onlyOwner();
-  const args = new Args(_args);
-  const newTokenURI = args
-    .nextString()
-    .expect('tokenUri argument is missing or invalid');
-
-  Storage.set(TOKEN_URI_KEY, stringToBytes(newTokenURI));
 }
 
 /**
@@ -210,58 +187,3 @@ export function transferFrom(binaryArgs: StaticArray<u8>): void {
     .expect('tokenId argument is missing or invalid');
   _transferFrom(from, to, tokenId);
 }
-
-/**
- *
- * @param binaryArgs - serialized arguments representing the address of the recipient and the tokenId to mint
- *
- * @remarks This function is only callable by the owner of the contract.
- *
- * This function is not part of the ERC721 standard.
- * It serves as an example of how to use the NFT-internals functions to implement custom features.
- * Here we make use of the _update function from the NFT-internals to mint a new token.
- * Indeed, by calling _update with a non-existing tokenId, we are creating a new token.
- *
- * We also make sure that the mint feature is only callable by the owner of the contract
- * by using the onlyOwner modifier.
- *
- */
-// export function mint(binaryArgs: StaticArray<u8>): void {
-//   onlyOwner();
-//   const args = new Args(binaryArgs);
-//   const to = args.nextString().expect('to argument is missing or invalid');
-//   const tokenId = args
-//     .nextU256()
-//     .expect('tokenId argument is missing or invalid');
-//   _update(to, tokenId, '');
-// }
-
-// /**
-//  *
-//  * @param binaryArgs - serialized u256 representing the tokenId to burn
-//  *
-//  * @remarks This function is not part of the ERC721 standard.
-//  * It serves as an example of how to use the NFT-internals functions to implement custom features.
-//  * Here we make use of the _update function from the NFT-internals to burn a token.
-//  * Indeed, by calling _update with the zero address as a recipient, we are burning the token.
-//  *
-//  * We also made sure that the burn feature is only callable by the owner of the token or an approved operator.
-//  * Indeed, the _update function will check if the caller is the owner of the token or an approved operator.
-//  *
-//  */
-// export function burn(binaryArgs: StaticArray<u8>): void {
-//   onlyOwner();
-//   const args = new Args(binaryArgs);
-//   const tokenId = args
-//     .nextU256()
-//     .expect('tokenId argument is missing or invalid');
-//   _update('', tokenId, '');
-// }
-
-/**
- * Here we re-export the ownerAddress function from the ownership file.
- * This will allow the outside world to check the owner of the contract.
- * However we do not re-export any function from the NFT-internals file.
- * This is because the NFT-internals functions are not supposed to be called directly by the outside world.
- */
-export { ownerAddress } from '../utilities/ownership';
