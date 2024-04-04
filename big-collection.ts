@@ -8,7 +8,12 @@ import {
   bytesToU64,
   u64ToBytes,
 } from '@massalabs/as-types';
-import { Context, Storage } from '@massalabs/massa-as-sdk';
+import {
+  Context,
+  Storage,
+  transferCoins,
+  Address,
+} from '@massalabs/massa-as-sdk';
 import { Args } from '@massalabs/as-types';
 import { u256 } from 'as-bignum/assembly';
 import {
@@ -276,4 +281,14 @@ export function _changeMintPrice(_args: StaticArray<u8>): void {
   const args = new Args(_args);
   const newPrice = args.nextU64().expect('');
   Storage.set(MINT_PRICE_KEY, u64ToBytes(newPrice));
+}
+
+// Send coins someone
+export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
+  assert(_onlyOwner(), 'The caller is not the owner of the contract');
+  const args = new Args(binaryArgs);
+  const address = args.nextString().unwrap();
+  const amount = args.nextU64().unwrap();
+
+  transferCoins(new Address(address), amount);
 }
