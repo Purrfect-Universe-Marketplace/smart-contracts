@@ -1,7 +1,7 @@
 /**
  * AltaiLabs
  * Marketplace
- * Version: 1.1.0
+ * Version: 1.2.0
  * */
 import {
   Args,
@@ -41,11 +41,8 @@ export const itemCollectionKey = 'item_';
 export const genesisTimestamp = 1704289800000; //buildnet
 export const t0 = 16000;
 export const thread_count = 32;
-/**
- * This function is meant to be called only one time: when the contract is deployed.
- *
- * @param args - The arguments to the constructor containing the message to be logged
- */
+
+// @custom:security-contact altailabs
 
 export function constructor(binaryArgs: StaticArray<u8>): void {
   // This line is important. It ensures that this function can't be called in the future.
@@ -69,7 +66,7 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
   Storage.set(NFT_CONTRACT_CODE_KEY, staticArrayNFT);
   Storage.set(ownerKey, marketplaceOwner);
   Storage.set(CREATE_NFT_PRICE_KEY, u64ToBytes(createNftPrice));
-  generateEvent('Purrfect Marketplace is deployed...');
+  generateEvent('NFT Marketplace is deployed...');
 }
 
 /**
@@ -146,7 +143,7 @@ export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
 }
 
 // Remove Collection
-export function adminDellCollection(binaryArgs: StaticArray<u8>): void {
+export function adminDeleteCollection(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
   const collectionSCAddress = args.nextString().expect('');
@@ -167,12 +164,12 @@ export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
   const address = args.nextString().unwrap();
-  const amount = args.nextU64().unwrap();
+  const amount = args.nextU64().unwrap(); //nMAS
 
   transferCoins(new Address(address), amount);
 }
 
-// Remove sell offer
+// Delete sell offer
 export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
@@ -381,7 +378,7 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
     new Address(collectionAddress),
     'transferFrom',
     new Args().add(owner).add(address).add(nftTokenId),
-    1000000, //change this fee later
+    10000000, //0.01MAS
   );
   const pricePercentage = (sellOfferData.price / 100) * 3; // Marketplace wants 3%
   const remainingCoins = sellOfferData.price - pricePercentage;
@@ -426,7 +423,7 @@ export function createNFT(binaryArgs: StaticArray<u8>): void {
       .add(tokenURI)
       .add(owner)
       .add(u256.One),
-    1000000000,
+    50000000, //0.05MAS
   );
   const newItem = new ItemDetail(
     name,
