@@ -72,7 +72,7 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
 function _onlyOwner(): bool {
   return Context.caller().toString() == Storage.get(ownerKey);
 }
-function _weHaveCollection(collectionAddress: string): bool {
+function _hasCollection(collectionAddress: string): bool {
   const key = userCollectionsKey + collectionAddress;
   const keyItem = itemCollectionKey + collectionAddress;
 
@@ -105,7 +105,7 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   const createdTime = Context.timestamp();
 
   assert(
-    _weHaveCollection(collectionAddress),
+    _hasCollection(collectionAddress),
     'Collection or Item not found in marketplace',
   );
   const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
@@ -189,7 +189,7 @@ export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
   const collectionAddress = args.nextString().unwrap();
   const nftTokenId = args.nextU256().unwrap();
   assert(
-    _weHaveCollection(collectionAddress),
+    _hasCollection(collectionAddress),
     'Collection not found in marketplace',
   );
   const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
@@ -236,7 +236,7 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
   const nftTokenId = args.nextU256().unwrap();
 
   assert(
-    _weHaveCollection(collectionAddress),
+    _hasCollection(collectionAddress),
     'Collection not found in marketplace',
   );
   const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
