@@ -1,7 +1,7 @@
 /**
  * AltaiLabs
  * Marketplace
- * Version: 1.3.0
+ * Version: 1.4.0
  * */
 import {
   Args,
@@ -28,6 +28,16 @@ import {
   ItemDetail,
 } from '../utilities/marketplace-complex';
 import { u256 } from 'as-bignum/assembly';
+
+/*
+export const NFT_CONTRACT_CODE_KEY = "NFT_CONTRACT_CODE";
+export const CREATE_NFT_PRICE_KEY = "CREATE_NFT_PRICE";
+export const MARKETPLACE_OWNER_KEY = 'MARKETPLACE_OWNER';
+export const SELL_OFFER_PREFIX = 'sellOffer_';
+export const BUY_OFFER_PREFIX = 'buyOffer_';
+export const COLLECTION_PREFIX = 'collection_';
+export const ITEM_PREFIX = 'item_';
+*/
 
 export const NFT_CONTRACT_CODE_KEY: StaticArray<u8> = [0x01];
 export const CREATE_NFT_PRICE_KEY: StaticArray<u8> = [0x02];
