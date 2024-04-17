@@ -26,9 +26,13 @@ import {
   SellOffer,
   CollectionDetail,
   ItemDetail,
-} from '../utilities/marketplace-complex';
+} from './marketplace-complex';
 import { u256 } from 'as-bignum/assembly';
 
+
+// You are inconsistent with your key naming conventions. 
+// Sometimes UPPEERCASE, sometimes lowercase, sometimes StaticArray<u8>, sometimes string, sometimes stringToBytes, etc.
+// It's not a serious issue, but it's better to be consistent. It's less error prone.
 export const NFT_CONTRACT_CODE_KEY: StaticArray<u8> = [0x01];
 export const CREATE_NFT_PRICE_KEY: StaticArray<u8> = [0x02];
 export const ownerKey = 'MARKETPLACE_OWNER';
@@ -38,6 +42,7 @@ export const userCollectionsKey = 'collection_';
 export const itemCollectionKey = 'item_';
 
 //ASC Settings
+// If genesisTimestamp depends on network configuration (mainnet or buildnet) why don't you set it as a parameter in the constructor ?
 export const genesisTimestamp = 1704289800000; //buildnet
 export const t0 = 16000;
 export const thread_count = 32;
@@ -62,7 +67,7 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
     .expect('contract_code argument is missing or invalid');
 
   const staticArrayNFT: StaticArray<u8> = unwrapStaticArray(contractNFT);
-
+  
   Storage.set(NFT_CONTRACT_CODE_KEY, staticArrayNFT);
   Storage.set(ownerKey, marketplaceOwner);
   Storage.set(CREATE_NFT_PRICE_KEY, u64ToBytes(createNftPrice));
@@ -72,6 +77,7 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
 function _onlyOwner(): bool {
   return Context.caller().toString() == Storage.get(ownerKey);
 }
+
 function _hasCollection(collectionAddress: string): bool {
   const key = userCollectionsKey + collectionAddress;
   const keyItem = itemCollectionKey + collectionAddress;
@@ -93,6 +99,13 @@ function _hasCollection(collectionAddress: string): bool {
  */
 export function sellOffer(binaryArgs: StaticArray<u8>): void {
   //args
+  // Why don't you pass a sellOffer object as a parameter instead of passing all the fields separately ?
+  // It would be more readable and maintainable.
+  // It would look like this: 
+  // const args = new Args(binaryArgs);
+  //  .nextSerializable<sellOffer>()
+  //  .expect("Can't deserialize sellOffer in sellOffer function");
+
   const args = new Args(binaryArgs);
   const collectionAddress = args.nextString().unwrap();
   const nftTokenId = args.nextU256().unwrap();
@@ -108,6 +121,7 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
     _hasCollection(collectionAddress),
     'Collection or Item not found in marketplace',
   );
+  // You should create a function for this pattern. It's repeated 5 times in this file.
   const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
   assert(!Storage.has(key), 'Sell offer already exist');
 
@@ -119,6 +133,7 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
       0,
     ),
   );
+  // toString is not necessary here. owner and creatorAddress are already strings.
   assert(
     owner == creatorAddress,
     'You are not the owner of NFT owner:' +
@@ -149,6 +164,8 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   Storage.set(stringToBytes(key), newSellOffer.serialize());
 
   //send ASC Message for delete when time is up
+  // !!! Risk of underflow here. expirationTime could be less than genesisTimestamp !!!
+  // You should check if expirationTime is greater than genesisTimestamp before calculating startPeriod.
   const startPeriod = floor((expirationTime - genesisTimestamp) / t0);
   const startThread = floor(
     (expirationTime - genesisTimestamp - startPeriod * t0) /
@@ -186,15 +203,23 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
  */
 export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
+  // Use expect instead of unwrap
   const collectionAddress = args.nextString().unwrap();
   const nftTokenId = args.nextU256().unwrap();
   assert(
     _hasCollection(collectionAddress),
     'Collection not found in marketplace',
   );
+  // You should create a function for this pattern. It's repeated 5 times in this file.
   const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
   assert(Storage.has(key), 'Sell offer doesnt exist');
 
+  // If I understand correctly, you are trying to deserialize a SellOffer object from the storage.
+  // Instead of the four line you are using, you could do the following in one line:
+  // const deserializeResult = new Args(Storage.get(stringToBytes(key))).nextSerializable<SellOffer>().unwrap();
+  // Thus you won't have to check if the deserialization is successful.
+  // Even better you could create a function for this pattern as it is used twice in this file.
+  // You could call it getSellOffer() for example.
   const storedData = Storage.get(stringToBytes(key));
   const offset: i32 = 0;
   const sellOfferData = new SellOffer('', '', 0, '', 0, 0);
@@ -206,6 +231,7 @@ export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
     sellOfferData.creatorAddress == Context.caller().toString(),
     'Only the creator can remove the sell offer',
   );
+  // A get owner helper function would be useful here.
   let owner = bytesToString(
     call(
       new Address(collectionAddress),
@@ -232,6 +258,7 @@ export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
  */
 export function buyOffer(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
+  // Please use expect instead of unwrap
   const collectionAddress = args.nextString().unwrap();
   const nftTokenId = args.nextU256().unwrap();
 
@@ -239,13 +266,21 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
     _hasCollection(collectionAddress),
     'Collection not found in marketplace',
   );
+  // You should create a function for this pattern. It's repeated 5 times in this file.
   const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
   assert(Storage.has(key), 'Sell offer doesnt exist');
 
+  // If I understand correctly, you are trying to deserialize a SellOffer object from the storage.
+  // Instead of the four line you are using, you could do the following in one line:
+  // const deserializeResult = new Args(Storage.get(stringToBytes(key))).nextSerializable<SellOffer>().unwrap();
+  // Thus you won't have to check if the deserialization is successful.
+  // Even better you could create a function for this pattern as it is used twice in this file.
+  // You could call it getSellOffer() for example.
   const storedData = Storage.get(stringToBytes(key));
   const offset: i32 = 0;
   const sellOfferData = new SellOffer('', '', 0, '', 0, 0);
   const deserializeResult = sellOfferData.deserialize(storedData, offset);
+
 
   assert(deserializeResult.isOk(), 'DESERIALIZATION_ERROR');
 
@@ -256,6 +291,7 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
     Context.transferredCoins() >= sellOfferData.price,
     'Could not send enough money or marketplace fees to buy this NFT',
   );
+  // A get owner helper function would be useful here.
   let owner = bytesToString(
     call(
       new Address(collectionAddress),
@@ -265,13 +301,14 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
     ),
   );
   const address = Context.caller().toString();
-
+  // Okay, so If I understand correctly, there is no `transfer` method in your NFT contract because you don't want users to be able to transfer without using the marketplace ? 
   call(
     new Address(collectionAddress),
     'transferFrom',
     new Args().add(owner).add(address).add(nftTokenId),
-    10000000, //0.01MAS
+    10_000_000, //0.01MAS
   );
+  // Maybe you want to be able to edit this percentage in the future. You could store it in the storage.
   const pricePercentage = (sellOfferData.price / 100) * 3; // Marketplace wants 3%
   const remainingCoins = sellOfferData.price - pricePercentage;
 
@@ -287,6 +324,10 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
 /**
  * @returns Create brand new NFT
  */
+// Ok so if I understand correctly, this method is used to deploy a new NFT contract. 
+// Do you know that instead of storing the bytecode of the NFT contract in the storage, you can read the code from the blockchain ?
+// This can be done with massa-as-sdk getBytecodeOf function.
+// https://as-sdk.docs.massa.net/functions/Contract.getBytecodeOf.html
 export function createNFT(binaryArgs: StaticArray<u8>): void {
   const price = bytesToU64(Storage.get(CREATE_NFT_PRICE_KEY));
   const amount_check = Context.transferredCoins();
@@ -335,12 +376,13 @@ export function createNFT(binaryArgs: StaticArray<u8>): void {
  */
 export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
+  // Please add an error message to the expect function.
   const collectionAddress = args.nextString().expect('');
   const tokenID = args.nextU64().expect('');
 
   const caller = Context.caller().toString();
   assert(caller == Context.callee().toString(), 'you are not the SC');
-
+  // You should create a function for this pattern. It's repeated 5 times in this file.
   const key = sellOfferKey + collectionAddress + '_' + tokenID.toString();
   const check = Storage.has(key);
   assert(check, 'sell offer not found');
@@ -348,6 +390,7 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   Storage.del(stringToBytes(key));
 }
 
+// What is the purpose of storing the contract code in the storage ?
 // Change Marketplace NFT code
 export function adminChangeNFTContractCode(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
@@ -361,6 +404,13 @@ export function adminChangeNFTContractCode(binaryArgs: StaticArray<u8>): void {
 }
 
 // Add Collection
+// You already defined a CollectionDetail class in marketplace-complex.ts.
+// Why are you reproducing the same code here ?
+// You could pass a CollectionDetail object as a parameter instead of passing all the fields separately.
+// Then you would deserialize like this: 
+// const args = new Args(binaryArgs);
+//  .nextSerializable<CollectionDetail>()
+//  .expect("Can't deserialize CollectionDetail in adminAddCollection function");
 export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
@@ -389,8 +439,10 @@ export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
 export function adminDeleteCollection(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
+  // Please add an error message to the expect function.
   const collectionSCAddress = args.nextString().expect('');
   const key = userCollectionsKey + collectionSCAddress;
+  // You should check that key exists in the storage before deleting it.
   Storage.del(stringToBytes(key));
 }
 
@@ -398,6 +450,7 @@ export function adminDeleteCollection(binaryArgs: StaticArray<u8>): void {
 export function adminChangeMarketplaceOwner(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
+  // Please use expect instead of unwrap
   const newAdmin = args.nextString().unwrap();
   Storage.set(ownerKey, newAdmin);
 }
@@ -406,9 +459,10 @@ export function adminChangeMarketplaceOwner(binaryArgs: StaticArray<u8>): void {
 export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
+  // Please use expect instead of unwrap
   const address = args.nextString().unwrap();
   const amount = args.nextU64().unwrap(); //nMAS
-
+  // Will fail if balance is insufficient
   transferCoins(new Address(address), amount);
 }
 
@@ -418,11 +472,14 @@ export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
   const collectionAddress = args.nextString().unwrap();
   const nftTokenId = args.nextU64().unwrap();
+  // You should create a function for this pattern. It's repeated 5 times in this file.
   const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
   Storage.del(stringToBytes(key));
 }
 
 // Change collection price
+// So if I understand correctly, all the tokens in a collection have the same price ?
+// Is it the intended behavior ?
 export function adminChangeNFTPrice(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);

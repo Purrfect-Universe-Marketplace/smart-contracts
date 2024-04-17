@@ -3,6 +3,13 @@ Massexplo
 Marketplace - Complex Class - Item - Collection - Sell 
 */
 
+// Comments for the whole file:
+
+// Why do you use the unwrap method ? 
+// It's better to use the expect method with an error message. 
+// In case of an error, the error message will be displayed, and you will know what went wrong.
+
+
 import { Serializable, Result, Args } from '@massalabs/as-types';
 
 export class ItemDetail implements Serializable {
