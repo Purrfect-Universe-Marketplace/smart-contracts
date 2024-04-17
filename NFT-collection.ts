@@ -32,7 +32,11 @@ import {
 
 export const OWNER_KEY = 'OWNER';
 export const BASE_URI_KEY = stringToBytes('BASE_URI');
+
+// Why are you setting a TOKEN_URI_KEY ? Shouldn't the token URI of a token be baseUri + tokenId ?
 export const TOKEN_URI_KEY = stringToBytes('TOKEN_URI');
+
+
 export const TOTAL_SUPPLY_KEY = stringToBytes('TOTAL_SUPPLY');
 export const COUNTER_KEY = stringToBytes('COUNTER');
 export const MINT_PRICE_KEY = stringToBytes('PRICE_PER_TOKEN');
@@ -69,6 +73,8 @@ export function constructor(_args: StaticArray<u8>): void {
 
   Storage.set(TOTAL_SUPPLY_KEY, u256ToBytes(totalSupply));
   Storage.set(BASE_URI_KEY, stringToBytes(baseURI));
+
+  // Same thing her, why are you setting a TOKEN_URI_KEY ? Shouldn't the token URI of a token be baseUri + tokenId ?
   Storage.set(TOKEN_URI_KEY, stringToBytes(tokenURI));
   Storage.set(MINT_PRICE_KEY, u64ToBytes(mintPrice));
   Storage.set(START_TIME_KEY, u64ToBytes(startTime));
@@ -90,6 +96,9 @@ export function totalSupply(
   return Storage.get(TOTAL_SUPPLY_KEY);
 }
 
+// How is this function different from the totalSupply function ?
+// If I understand correctly, you use current supply as a counter to create new tokenIds. But since you don't have a burn function, the totalSupply will always be equal to the currentSupply.
+// SO if my understanding is correct, you should remove this function and use the totalSupply function instead.
 export function currentSupply(
   _: StaticArray<u8> = new StaticArray<u8>(0),
 ): StaticArray<u8> {
@@ -102,6 +111,16 @@ export function baseURI(
   return Storage.get(BASE_URI_KEY);
 }
 
+// I don't understand why you are setting a TOKEN_URI_KEY. Shouldn't the token URI of a token be baseUri + tokenId ?
+// I suggest that you do the following instead:
+// export function tokenURI(_args: StaticArray<u8>): StaticArray<u8> {
+//   const args = new Args(_args);
+//   const tokenId = args
+//     .nextU256()
+//     .expect('token id argument is missing or invalid')
+//     .toString();
+//   const baseUri = bytesToString(Storage.get(BASE_URI_KEY));
+//  return stringToBytes(baseUri + tokenId);
 export function tokenURI(_args: StaticArray<u8>): StaticArray<u8> {
   const args = new Args(_args);
   const tokenId = args
@@ -114,7 +133,11 @@ export function tokenURI(_args: StaticArray<u8>): StaticArray<u8> {
   return stringToBytes(key);
 }
 
+// So anyone can mint a token right ? Is this intended ?
 export function mint(_args: StaticArray<u8>): void {
+  // Ok now I understand why you have separate functions for totalSupply and currentSupply.
+  // You want to limit the total supply to a certain number of tokens.
+  // I suggest that you create a MAX_SUPPLY_KEY and set it in the constructor, and use total supply as a counter.
   assert(
     bytesToU256(Storage.get(TOTAL_SUPPLY_KEY)) > bytesToU256(currentSupply()),
     'Max supply reached',
@@ -132,12 +155,15 @@ export function mint(_args: StaticArray<u8>): void {
   const mintAddress = args
     .nextString()
     .expect('mintAddress argument is missing or invalid');
-
+  // Same thing here, you should use the totalSupply function instead of the currentSupply function.
+  // You could event create an increment function that increments the totalSupply and returns the new value.
   const increment = bytesToU256(currentSupply()) + u256.One;
   Storage.set(COUNTER_KEY, u256ToBytes(increment));
   _update(mintAddress, increment, '');
 }
 
+// TokenURI is supposed to be the URI of a specific token, not the base URI.
+// A setTokenURI function is not necessary, as the token URI should be baseUri + tokenId.
 export function _setTokenURI(_args: StaticArray<u8>): void {
   assert(_onlyOwner(), 'only sc owner can access');
   const args = new Args(_args);
@@ -265,10 +291,12 @@ export function isApprovedForAll(binaryArgs: StaticArray<u8>): StaticArray<u8> {
   return boolToByte(_isApprovedForAll(owner, operator));
 }
 
+// Why do you export this function ? It is not used in the other contracts.
 export function _onlyOwner(): bool {
   return Context.caller().toString() == Storage.get(OWNER_KEY);
 }
 
+// Why is there an _ before function name ? In general underscore is used to indicate that a function is internal or private.
 export function _changePauseStatus(_args: StaticArray<u8>): void {
   assert(_onlyOwner(), 'only sc owner can access');
   const args = new Args(_args);
@@ -276,9 +304,11 @@ export function _changePauseStatus(_args: StaticArray<u8>): void {
   Storage.set(MINT_PAUSED_KEY, boolToByte(pause));
 }
 
+// Why is there an _ before function name ?  In general underscore is used to indicate that a function is internal or private. 
 export function _changeMintPrice(_args: StaticArray<u8>): void {
   assert(_onlyOwner(), 'only sc owner can access');
   const args = new Args(_args);
+  // Please add an error message in the expect function
   const newPrice = args.nextU64().expect('');
   Storage.set(MINT_PRICE_KEY, u64ToBytes(newPrice));
 }
@@ -287,8 +317,12 @@ export function _changeMintPrice(_args: StaticArray<u8>): void {
 export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
+  // Please use expect function instead of unwrap and add an error message
   const address = args.nextString().unwrap();
+  // Please use expect function instead of unwrap and add an error message
   const amount = args.nextU64().unwrap();
 
   transferCoins(new Address(address), amount);
 }
+
+// There is no transfer function in this contract. Why is that ?

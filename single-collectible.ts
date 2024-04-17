@@ -24,6 +24,8 @@ import {
 import { isDeployingContract, Storage } from '@massalabs/massa-as-sdk';
 
 export const BASE_URI_KEY = stringToBytes('BASE_URI');
+
+// Why are you setting a TOKEN_URI_KEY ? Shouldn't the token URI of a token be baseUri + tokenId ?
 export const TOKEN_URI_KEY = stringToBytes('TOKEN_URI');
 
 /**
@@ -69,6 +71,8 @@ export function name(): string {
 export function symbol(): string {
   return _symbol();
 }
+
+// tokenURI should be baseURI + tokenId. See my other comments in NFT-collections.ts
 export function tokenURI(_args: StaticArray<u8>): StaticArray<u8> {
   const args = new Args(_args);
   const tokenId = args
@@ -178,6 +182,7 @@ export function setApprovalForAll(binaryArgs: StaticArray<u8>): void {
  * @remarks This function is only callable by the owner of the tokenId or an approved operator.
  *
  */
+// So there is a transferFrom but no transfer function ? I don't understand the logic behind this.
 export function transferFrom(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
   const from = args.nextString().expect('from argument is missing or invalid');
