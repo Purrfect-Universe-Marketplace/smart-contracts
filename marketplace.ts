@@ -1,7 +1,6 @@
 /**
  * AltaiLabs
  * Marketplace
- * Version: 1.3.0
  * */
 import {
   Args,
@@ -21,6 +20,7 @@ import {
   sendMessage,
   transferCoins,
   createSC,
+  balance,
 } from '@massalabs/massa-as-sdk';
 import {
   SellOffer,
@@ -29,29 +29,26 @@ import {
 } from '../utilities/marketplace-complex';
 import { u256 } from 'as-bignum/assembly';
 
-export const NFT_CONTRACT_CODE_KEY: StaticArray<u8> = [0x01];
-export const CREATE_NFT_PRICE_KEY: StaticArray<u8> = [0x02];
-export const ownerKey = 'MARKETPLACE_OWNER';
-export const sellOfferKey = 'sellOffer_';
-export const buyOfferKey = 'buyOffer_';
-export const userCollectionsKey = 'collection_';
-export const itemCollectionKey = 'item_';
+export const NFT_CONTRACT_CODE_KEY = stringToBytes('NFT_CONTRACT_CODE');
+export const CREATE_NFT_PRICE_KEY = stringToBytes('CREATE_NFT_PRICE');
+export const MARKETPLACE_OWNER_KEY = 'MARKETPLACE_OWNER';
+export const SELL_OFFER_PREFIX = 'sellOffer_';
+export const BUY_OFFER_PREFIX = 'buyOffer_';
+export const COLLECTION_PREFIX = 'collection_';
+export const ITEM_PREFIX = 'item_';
 
-//ASC Settings
-export const genesisTimestamp = 1704289800000; //buildnet
+//STATIC VALUES
+export const genesisTimestamp = 1704289800000; //buildnet genesis timestamp
 export const t0 = 16000;
 export const thread_count = 32;
 
 // @custom:security-contact altailabs
-
 export function constructor(binaryArgs: StaticArray<u8>): void {
-  // This line is important. It ensures that this function can't be called in the future.
-  // If you remove this check, someone could call your constructor function and reset your smart contract.
   if (!Context.isDeployingContract()) {
     return;
   }
   const args = new Args(binaryArgs);
-  const marketplaceOwner = args
+  const owner = args
     .nextString()
     .expect('marketplaceOwner argument is missing or invalid');
   const createNftPrice = args
@@ -64,22 +61,29 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
   const staticArrayNFT: StaticArray<u8> = unwrapStaticArray(contractNFT);
 
   Storage.set(NFT_CONTRACT_CODE_KEY, staticArrayNFT);
-  Storage.set(ownerKey, marketplaceOwner);
+  Storage.set(MARKETPLACE_OWNER_KEY, owner);
   Storage.set(CREATE_NFT_PRICE_KEY, u64ToBytes(createNftPrice));
   generateEvent('NFT Marketplace is deployed...');
 }
 
 function _onlyOwner(): bool {
-  return Context.caller().toString() == Storage.get(ownerKey);
+  return Context.caller().toString() == Storage.get(MARKETPLACE_OWNER_KEY);
 }
 function _hasCollection(collectionAddress: string): bool {
-  const key = userCollectionsKey + collectionAddress;
-  const keyItem = itemCollectionKey + collectionAddress;
+  const key = COLLECTION_PREFIX + collectionAddress;
+  const keyItem = ITEM_PREFIX + collectionAddress;
 
   // Check if at least one of the collections exists
   return Storage.has(key) || Storage.has(keyItem);
 }
-
+function _keyGenerator(address: string, tokenID: u256): string {
+  return SELL_OFFER_PREFIX + address + '_' + tokenID.toString();
+}
+function _getNFTOwner(address: string, tokenID: u256): string {
+  return bytesToString(
+    call(new Address(address), 'ownerOf', new Args().add(tokenID), 0),
+  );
+}
 /**
  * Add new sell offer
  *
@@ -108,23 +112,17 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
     _hasCollection(collectionAddress),
     'Collection or Item not found in marketplace',
   );
-  const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
+  const key = _keyGenerator(collectionAddress, nftTokenId);
+
   assert(!Storage.has(key), 'Sell offer already exist');
 
-  const owner = bytesToString(
-    call(
-      new Address(collectionAddress),
-      'ownerOf',
-      new Args().add(nftTokenId),
-      0,
-    ),
-  );
+  const owner = _getNFTOwner(collectionAddress, nftTokenId);
   assert(
     owner == creatorAddress,
     'You are not the owner of NFT owner:' +
-      owner.toString() +
+      owner +
       ' callerAddress: ' +
-      creatorAddress.toString(),
+      creatorAddress,
   );
 
   const approved = byteToBool(
@@ -149,6 +147,8 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   Storage.set(stringToBytes(key), newSellOffer.serialize());
 
   //send ASC Message for delete when time is up
+  // !!! Risk of underflow here. expirationTime could be less than genesisTimestamp !!!
+  // You should check if expirationTime is greater than genesisTimestamp before calculating startPeriod.
   const startPeriod = floor((expirationTime - genesisTimestamp) / t0);
   const startThread = floor(
     (expirationTime - genesisTimestamp - startPeriod * t0) /
@@ -186,13 +186,16 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
  */
 export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
-  const collectionAddress = args.nextString().unwrap();
-  const nftTokenId = args.nextU256().unwrap();
+  const collectionAddress = args
+    .nextString()
+    .expect('Collection address not entered.');
+  const nftTokenId = args.nextU256().expect('Token ID not entered');
   assert(
     _hasCollection(collectionAddress),
     'Collection not found in marketplace',
   );
-  const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
+  const key = _keyGenerator(collectionAddress, nftTokenId);
+
   assert(Storage.has(key), 'Sell offer doesnt exist');
 
   const storedData = Storage.get(stringToBytes(key));
@@ -206,14 +209,8 @@ export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
     sellOfferData.creatorAddress == Context.caller().toString(),
     'Only the creator can remove the sell offer',
   );
-  let owner = bytesToString(
-    call(
-      new Address(collectionAddress),
-      'ownerOf',
-      new Args().add(nftTokenId),
-      0,
-    ),
-  );
+  const owner = _getNFTOwner(collectionAddress, nftTokenId);
+
   assert(owner == Context.caller().toString(), 'You are not the owner of NFT');
   Storage.del(stringToBytes(key));
   generateEvent('REMOVE_SELL_OFFER : ' + Context.caller().toString());
@@ -232,14 +229,17 @@ export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
  */
 export function buyOffer(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
-  const collectionAddress = args.nextString().unwrap();
-  const nftTokenId = args.nextU256().unwrap();
+  const collectionAddress = args
+    .nextString()
+    .expect('Collection address not entered.');
+  const nftTokenId = args.nextU256().expect('TokenID not entered.');
 
   assert(
     _hasCollection(collectionAddress),
     'Collection not found in marketplace',
   );
-  const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
+  const key = _keyGenerator(collectionAddress, nftTokenId);
+
   assert(Storage.has(key), 'Sell offer doesnt exist');
 
   const storedData = Storage.get(stringToBytes(key));
@@ -256,22 +256,19 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
     Context.transferredCoins() >= sellOfferData.price,
     'Could not send enough money or marketplace fees to buy this NFT',
   );
-  let owner = bytesToString(
-    call(
-      new Address(collectionAddress),
-      'ownerOf',
-      new Args().add(nftTokenId),
-      0,
-    ),
-  );
+
+  const owner = _getNFTOwner(collectionAddress, nftTokenId);
   const address = Context.caller().toString();
 
+  // PURCHASED, TOKEN SENDED TO NEW OWNER
   call(
     new Address(collectionAddress),
     'transferFrom',
     new Args().add(owner).add(address).add(nftTokenId),
-    10000000, //0.01MAS
+    10_000_000, //0.01MAS
   );
+
+  // KEEP THE PERCENTAGE AT THE STORE TO CHANGE IT IN THE FUTURE
   const pricePercentage = (sellOfferData.price / 100) * 3; // Marketplace wants 3%
   const remainingCoins = sellOfferData.price - pricePercentage;
 
@@ -325,7 +322,7 @@ export function createNFT(binaryArgs: StaticArray<u8>): void {
     tokenURI,
   );
   Storage.set(
-    stringToBytes(itemCollectionKey + addr.toString()),
+    stringToBytes(ITEM_PREFIX + addr.toString()),
     newItem.serialize(),
   );
 }
@@ -335,13 +332,15 @@ export function createNFT(binaryArgs: StaticArray<u8>): void {
  */
 export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   const args = new Args(binaryArgs);
-  const collectionAddress = args.nextString().expect('');
-  const tokenID = args.nextU64().expect('');
+  const collectionAddress = args
+    .nextString()
+    .expect('Collection address not entered.');
+  const tokenID = args.nextU256().expect('TokenID not entered.');
 
   const caller = Context.caller().toString();
   assert(caller == Context.callee().toString(), 'you are not the SC');
 
-  const key = sellOfferKey + collectionAddress + '_' + tokenID.toString();
+  const key = _keyGenerator(collectionAddress, tokenID);
   const check = Storage.has(key);
   assert(check, 'sell offer not found');
 
@@ -372,7 +371,7 @@ export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
   const collectionBackgroundImage = args.nextString().expect('');
   const collectionLogoImage = args.nextString().expect('');
 
-  const key = userCollectionsKey + collectionAddress;
+  const key = COLLECTION_PREFIX + collectionAddress;
   const collection = new CollectionDetail(
     collectionName,
     collectionDesc,
@@ -389,8 +388,13 @@ export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
 export function adminDeleteCollection(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
-  const collectionSCAddress = args.nextString().expect('');
-  const key = userCollectionsKey + collectionSCAddress;
+  const collectionSCAddress = args
+    .nextString()
+    .expect('Collection address not entered');
+  const key = COLLECTION_PREFIX + collectionSCAddress;
+
+  const has = Storage.has(stringToBytes(key));
+  assert(has, 'Collection is not found');
   Storage.del(stringToBytes(key));
 }
 
@@ -398,17 +402,22 @@ export function adminDeleteCollection(binaryArgs: StaticArray<u8>): void {
 export function adminChangeMarketplaceOwner(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
-  const newAdmin = args.nextString().unwrap();
-  Storage.set(ownerKey, newAdmin);
+  const newAdmin = args.nextString().expect('New Admin Address not entered.');
+  Storage.set(MARKETPLACE_OWNER_KEY, newAdmin);
 }
 
 // Send coins someone
 export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
-  const address = args.nextString().unwrap();
-  const amount = args.nextU64().unwrap(); //nMAS
+  const address = args.nextString().expect('Target address not entered.');
+  const amount = args.nextU64().expect('Target amount not entered'); //nMAS
 
+  const scBalance = balance();
+  assert(
+    scBalance < amount,
+    'No funds were found for the amount you wanted to send.',
+  );
   transferCoins(new Address(address), amount);
 }
 
@@ -416,9 +425,12 @@ export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
 export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
-  const collectionAddress = args.nextString().unwrap();
-  const nftTokenId = args.nextU64().unwrap();
-  const key = sellOfferKey + collectionAddress + '_' + nftTokenId.toString();
+  const collectionAddress = args
+    .nextString()
+    .expect('Collection address not found');
+  const nftTokenId = args.nextU256().expect('Collection address not found.');
+
+  const key = _keyGenerator(collectionAddress, nftTokenId);
   Storage.del(stringToBytes(key));
 }
 
