@@ -6,10 +6,7 @@ import {
   Args,
   byteToBool,
   bytesToString,
-  bytesToU64,
   stringToBytes,
-  u64ToBytes,
-  unwrapStaticArray,
 } from '@massalabs/as-types';
 import {
   Address,
@@ -19,23 +16,15 @@ import {
   generateEvent,
   sendMessage,
   transferCoins,
-  createSC,
   balance,
 } from '@massalabs/massa-as-sdk';
-import {
-  SellOffer,
-  CollectionDetail,
-  ItemDetail,
-} from '../utilities/marketplace-complex';
+import { SellOffer, CollectionDetail } from '../utilities/marketplace-complex';
 import { u256 } from 'as-bignum/assembly';
 
-export const NFT_CONTRACT_CODE_KEY = stringToBytes('NFT_CONTRACT_CODE');
-export const CREATE_NFT_PRICE_KEY = stringToBytes('CREATE_NFT_PRICE');
 export const MARKETPLACE_OWNER_KEY = 'MARKETPLACE_OWNER';
 export const SELL_OFFER_PREFIX = 'sellOffer_';
 export const BUY_OFFER_PREFIX = 'buyOffer_';
 export const COLLECTION_PREFIX = 'collection_';
-export const ITEM_PREFIX = 'item_';
 
 //STATIC VALUES
 export const genesisTimestamp = 1704289800000; //buildnet genesis timestamp
@@ -51,18 +40,8 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
   const owner = args
     .nextString()
     .expect('marketplaceOwner argument is missing or invalid');
-  const createNftPrice = args
-    .nextU64()
-    .expect('nftprice argument is missing or invalid');
-  const contractNFT = args
-    .nextUint8Array()
-    .expect('contract_code argument is missing or invalid');
 
-  const staticArrayNFT: StaticArray<u8> = unwrapStaticArray(contractNFT);
-
-  Storage.set(NFT_CONTRACT_CODE_KEY, staticArrayNFT);
   Storage.set(MARKETPLACE_OWNER_KEY, owner);
-  Storage.set(CREATE_NFT_PRICE_KEY, u64ToBytes(createNftPrice));
   generateEvent('NFT Marketplace is deployed...');
 }
 
@@ -71,11 +50,11 @@ function _onlyOwner(): bool {
 }
 function _hasCollection(collectionAddress: string): bool {
   const key = COLLECTION_PREFIX + collectionAddress;
-  const keyItem = ITEM_PREFIX + collectionAddress;
 
   // Check if at least one of the collections exists
-  return Storage.has(key) || Storage.has(keyItem);
+  return Storage.has(key);
 }
+
 function _keyGenerator(address: string, tokenID: u256): string {
   return SELL_OFFER_PREFIX + address + '_' + tokenID.toString();
 }
@@ -282,52 +261,6 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
 }
 
 /**
- * @returns Create brand new NFT
- */
-export function createNFT(binaryArgs: StaticArray<u8>): void {
-  const price = bytesToU64(Storage.get(CREATE_NFT_PRICE_KEY));
-  const amount_check = Context.transferredCoins();
-  const owner = Context.caller().toString();
-  assert(amount_check >= price, 'Insufficient balance for create NFT.');
-
-  const args = new Args(binaryArgs);
-  const name = args.nextString().expect('we need the name...');
-  const symbol = args.nextString().expect('we need the symbol...');
-  const baseURI = args.nextString().expect('we need the baseURI...');
-  const tokenURI = args.nextString().expect('we need the tokenURI...');
-
-  assert(name.length <= 30, 'The name is too long.');
-  assert(symbol.length <= 8, 'The symbol is too long.');
-  assert(baseURI.length > 10, 'baseURI must be entered.');
-
-  const nft_contract_code = Storage.get(NFT_CONTRACT_CODE_KEY);
-  const addr = createSC(nft_contract_code);
-  call(
-    addr,
-    'constructor',
-    new Args()
-      .add(name)
-      .add(symbol)
-      .add(baseURI)
-      .add(tokenURI)
-      .add(owner)
-      .add(u256.One),
-    50000000, //0.05MAS
-  );
-  const newItem = new ItemDetail(
-    name,
-    symbol,
-    addr.toString(),
-    baseURI,
-    tokenURI,
-  );
-  Storage.set(
-    stringToBytes(ITEM_PREFIX + addr.toString()),
-    newItem.serialize(),
-  );
-}
-
-/**
  * @returns Remove Sell offer autonomously when it expires
  */
 export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
@@ -347,19 +280,9 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   Storage.del(stringToBytes(key));
 }
 
-// Change Marketplace NFT code
-export function adminChangeNFTContractCode(binaryArgs: StaticArray<u8>): void {
-  assert(_onlyOwner(), 'The caller is not the owner of the contract');
-  const args = new Args(binaryArgs);
-  const contractNFT = args
-    .nextUint8Array()
-    .expect('contract_code argument is missing or invalid');
-
-  const staticArrayNFT: StaticArray<u8> = unwrapStaticArray(contractNFT);
-  Storage.set(NFT_CONTRACT_CODE_KEY, staticArrayNFT);
-}
-
-// Add Collection
+/*
+This allows you to add the already deployed collection you want to list
+*/
 export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
@@ -432,12 +355,4 @@ export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
 
   const key = _keyGenerator(collectionAddress, nftTokenId);
   Storage.del(stringToBytes(key));
-}
-
-// Change collection price
-export function adminChangeNFTPrice(binaryArgs: StaticArray<u8>): void {
-  assert(_onlyOwner(), 'The caller is not the owner of the contract');
-  const args = new Args(binaryArgs);
-  const newPrice = args.nextU64().unwrap();
-  Storage.set(CREATE_NFT_PRICE_KEY, u64ToBytes(newPrice));
 }
