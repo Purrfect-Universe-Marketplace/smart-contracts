@@ -6,7 +6,9 @@ import {
   Args,
   byteToBool,
   bytesToString,
+  bytesToU64,
   stringToBytes,
+  u64ToBytes,
 } from '@massalabs/as-types';
 import {
   Address,
@@ -22,6 +24,7 @@ import { SellOffer, CollectionDetail } from '../utilities/marketplace-complex';
 import { u256 } from 'as-bignum/assembly';
 
 export const MARKETPLACE_OWNER_KEY = 'MARKETPLACE_OWNER';
+export const MARKETPLACE_FEE_KEY = stringToBytes('MARKETPLACE_FEE');
 export const SELL_OFFER_PREFIX = 'sellOffer_';
 export const BUY_OFFER_PREFIX = 'buyOffer_';
 export const COLLECTION_PREFIX = 'collection_';
@@ -37,11 +40,9 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
     return;
   }
   const args = new Args(binaryArgs);
-  const owner = args
-    .nextString()
-    .expect('marketplaceOwner argument is missing or invalid');
-
-  Storage.set(MARKETPLACE_OWNER_KEY, owner);
+  const marketplaceFee = args.nextU64().expect('Marketplace Fee Not entered.');
+  Storage.set(MARKETPLACE_FEE_KEY, u64ToBytes(marketplaceFee));
+  Storage.set(MARKETPLACE_OWNER_KEY, Context.caller().toString());
   generateEvent('NFT Marketplace is deployed...');
 }
 
@@ -247,8 +248,8 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
     10_000_000, //0.01MAS
   );
 
-  // KEEP THE PERCENTAGE AT THE STORE TO CHANGE IT IN THE FUTURE
-  const pricePercentage = (sellOfferData.price / 100) * 3; // Marketplace wants 3%
+  const marketplaceFee = bytesToU64(Storage.get(MARKETPLACE_FEE_KEY));
+  const pricePercentage = (sellOfferData.price / 100) * marketplaceFee; // Marketplace wants 3%
   const remainingCoins = sellOfferData.price - pricePercentage;
 
   transferCoins(new Address(owner), remainingCoins);
@@ -355,4 +356,15 @@ export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
 
   const key = _keyGenerator(collectionAddress, nftTokenId);
   Storage.del(stringToBytes(key));
+}
+
+// Change Marketplace Fee
+export function adminChangeMarketplaceFee(binaryArgs: StaticArray<u8>): void {
+  assert(_onlyOwner(), 'The caller is not the owner of the contract');
+  const args = new Args(binaryArgs);
+  const marketplaceFee = args
+    .nextU64()
+    .expect('Marketplace Fee is not entered.');
+
+  Storage.set(MARKETPLACE_FEE_KEY, u64ToBytes(marketplaceFee));
 }
