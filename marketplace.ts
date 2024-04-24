@@ -8,6 +8,7 @@ import {
   bytesToString,
   bytesToU64,
   stringToBytes,
+  u256ToBytes,
   u64ToBytes,
 } from '@massalabs/as-types';
 import {
@@ -27,6 +28,7 @@ export const MARKETPLACE_OWNER_KEY = 'MARKETPLACE_OWNER';
 export const SELL_OFFER_PREFIX = 'sellOffer_';
 export const BUY_OFFER_PREFIX = 'buyOffer_';
 export const COLLECTION_PREFIX = 'collection_';
+export const MARKETPLACE_FEE_KEY = stringToBytes('MARKETPLACE_FEE');
 
 //STATIC VALUES
 export const genesisTimestamp = 1704289800000; //buildnet genesis timestamp
@@ -38,6 +40,10 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
   if (!Context.isDeployingContract()) {
     return;
   }
+  const args = new Args(binaryArgs);
+  const marketplaceFee = args.nextU64().expect('Marketplace Fee not entered');
+
+  Storage.set(MARKETPLACE_FEE_KEY, u64ToBytes(marketplaceFee));
   Storage.set(MARKETPLACE_OWNER_KEY, Context.caller().toString());
   generateEvent('NFT Marketplace is deployed...');
 }
@@ -85,6 +91,10 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   const createdTime = Context.timestamp();
 
   assert(
+    expirationTime > Context.timestamp(),
+    'The end time must be greater than the Context.timestamp()',
+  );
+  assert(
     _hasCollection(collectionAddress),
     'Collection or Item not found in marketplace',
   );
@@ -123,8 +133,6 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   Storage.set(stringToBytes(key), newSellOffer.serialize());
 
   //send ASC Message for delete when time is up
-  // !!! Risk of underflow here. expirationTime could be less than genesisTimestamp !!!
-  // You should check if expirationTime is greater than genesisTimestamp before calculating startPeriod.
   const startPeriod = floor((expirationTime - genesisTimestamp) / t0);
   const startThread = floor(
     (expirationTime - genesisTimestamp - startPeriod * t0) /
@@ -134,7 +142,7 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   const endThread = 31 as u8;
 
   const maxGas = 500_000_000; // gas for smart contract execution
-  const rawFee = 0;
+  const rawFee = 10_000_000; // 0.01 fee
   const coins = 0;
 
   const scaddr = Context.callee();
@@ -244,7 +252,8 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
     10_000_000, //0.01MAS
   );
 
-  const pricePercentage = (sellOfferData.price / 100) * 3; // Marketplace wants 3%
+  const marketplaceFee = bytesToU64(Storage.get(MARKETPLACE_FEE_KEY));
+  const pricePercentage = (sellOfferData.price / 100) * marketplaceFee;
   const remainingCoins = sellOfferData.price - pricePercentage;
 
   transferCoins(new Address(owner), remainingCoins);
@@ -276,19 +285,45 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   Storage.del(stringToBytes(key));
 }
 
-/*
-This allows you to add the already deployed collection you want to list
-*/
+/**
+ *  - This allows you to add the collection you want to list
+ * @param binaryArgs - serialized StaticArray<u8> containing
+ * - collection front end name (String)
+ * - collection desc (String)
+ * - collection sc address (String)
+ * - collection website (String)
+ * - Banner Image Link for Front-End (String)
+ * - Collection Background Image Link for Front-End (String)
+ * - Collection Logo Image Link for Front-End (String)
+ * @requires
+ * Only owner can add
+ */
 export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
-  const collectionName = args.nextString().expect('');
-  const collectionDesc = args.nextString().expect('');
-  const collectionAddress = args.nextString().expect('');
-  const collectionWebsite = args.nextString().expect('');
-  const bannerImage = args.nextString().expect('');
-  const collectionBackgroundImage = args.nextString().expect('');
-  const collectionLogoImage = args.nextString().expect('');
+  const collectionName = args
+    .nextString()
+    .expect('You did not enter the collection name');
+  const collectionDesc = args
+    .nextString()
+    .expect('You did not enter the collection description');
+  const collectionAddress = args
+    .nextString()
+    .expect('You did not enter the collection smart contract address');
+  const collectionWebsite = args
+    .nextString()
+    .expect('You did not enter the collection website');
+  const bannerImage = args
+    .nextString()
+    .expect('You did not enter the collection banner image link');
+  const collectionBackgroundImage = args
+    .nextString()
+    .expect(
+      'You did not enter the collection collection background image link',
+    );
+  const collectionLogoImage = args
+    .nextString()
+    .expect('You did not enter the collection logo image link');
 
   const key = COLLECTION_PREFIX + collectionAddress;
   const collection = new CollectionDetail(
@@ -303,7 +338,11 @@ export function adminAddCollection(binaryArgs: StaticArray<u8>): void {
   Storage.set(stringToBytes(key), collection.serialize());
 }
 
-// Remove Collection
+/**
+ *  - This allows you to remove the already deployed collection
+ * @requires
+ * Only owner can add
+ */
 export function adminDeleteCollection(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
@@ -317,7 +356,11 @@ export function adminDeleteCollection(binaryArgs: StaticArray<u8>): void {
   Storage.del(stringToBytes(key));
 }
 
-// Change marketplace owner
+/**
+ *  - This allows you to change the marketplace owner
+ * @requires
+ * Only owner can add
+ */
 export function adminChangeMarketplaceOwner(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
@@ -325,7 +368,11 @@ export function adminChangeMarketplaceOwner(binaryArgs: StaticArray<u8>): void {
   Storage.set(MARKETPLACE_OWNER_KEY, newAdmin);
 }
 
-// Send coins someone
+/**
+ *  - Sends coins to someone
+ * @requires
+ * Only owner can add
+ */
 export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
@@ -340,7 +387,11 @@ export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
   transferCoins(new Address(address), amount);
 }
 
-// Delete sell offer
+/**
+ *  - Admin removes a sale offer
+ * @requires
+ * Only owner can add
+ */
 export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
@@ -351,4 +402,17 @@ export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
 
   const key = _keyGenerator(collectionAddress, nftTokenId);
   Storage.del(stringToBytes(key));
+}
+
+/**
+ *  - Admin change marketplace fee
+ * @requires
+ * Only owner can add
+ */
+export function adminChangeMarketplaceFee(binaryArgs: StaticArray<u8>): void {
+  assert(_onlyOwner(), 'The caller is not the owner of the contract');
+  const args = new Args(binaryArgs);
+  const newFee = args.nextU64().expect('Marketplace new fee not entered.');
+
+  Storage.set(MARKETPLACE_FEE_KEY, u64ToBytes(newFee));
 }
