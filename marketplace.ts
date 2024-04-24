@@ -478,8 +478,7 @@ export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
 }
 
 // Change collection price
-// So if I understand correctly, all the tokens in a collection have the same price ?
-// Is it the intended behavior ?
+// It is the collection creation price that you are setting here right ?
 export function adminChangeNFTPrice(binaryArgs: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   const args = new Args(binaryArgs);
