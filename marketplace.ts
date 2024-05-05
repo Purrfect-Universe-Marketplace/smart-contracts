@@ -8,7 +8,6 @@ import {
   bytesToString,
   bytesToU64,
   stringToBytes,
-  u256ToBytes,
   u64ToBytes,
 } from '@massalabs/as-types';
 import {
@@ -19,7 +18,6 @@ import {
   generateEvent,
   sendMessage,
   transferCoins,
-  balance,
 } from '@massalabs/massa-as-sdk';
 import { SellOffer, CollectionDetail } from '../utilities/marketplace-complex';
 import { u256 } from 'as-bignum/assembly';
@@ -31,7 +29,7 @@ export const COLLECTION_PREFIX = 'collection_';
 export const MARKETPLACE_FEE_KEY = stringToBytes('MARKETPLACE_FEE');
 
 //STATIC VALUES
-export const genesisTimestamp = 1704289800000; //buildnet genesis timestamp
+export const genesisTimestamp = 1705312800000; //mainnet genesis timestamp
 export const t0 = 16000;
 export const thread_count = 32;
 
@@ -80,10 +78,12 @@ function _getNFTOwner(address: string, tokenID: u256): string {
 export function sellOffer(binaryArgs: StaticArray<u8>): void {
   //args
   const args = new Args(binaryArgs);
-  const collectionAddress = args.nextString().unwrap();
-  const nftTokenId = args.nextU256().unwrap();
-  const price = args.nextU64().unwrap();
-  const expireIn = args.nextU64().unwrap();
+  const collectionAddress = args
+    .nextString()
+    .expect('Collection address not entered.');
+  const nftTokenId = args.nextU256().expect('TokenID not entered.');
+  const price = args.nextU64().expect('Exptected Price not entered.');
+  const expireIn = args.nextU64().expect('Expire In not entered.');
 
   //date
   const expirationTime = Context.timestamp() + expireIn;
@@ -188,11 +188,6 @@ export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
   const deserializeResult = sellOfferData.deserialize(storedData, offset);
 
   assert(deserializeResult.isOk(), 'DESERIALIZATION_ERROR');
-
-  assert(
-    sellOfferData.creatorAddress == Context.caller().toString(),
-    'Only the creator can remove the sell offer',
-  );
   const owner = _getNFTOwner(collectionAddress, nftTokenId);
 
   assert(owner == Context.caller().toString(), 'You are not the owner of NFT');
@@ -276,7 +271,7 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   const tokenID = args.nextU256().expect('TokenID not entered.');
 
   const caller = Context.caller().toString();
-  assert(caller == Context.callee().toString(), 'you are not the SC');
+  assert(caller == Context.callee().toString(), 'You are not SC.');
 
   const key = _keyGenerator(collectionAddress, tokenID);
   const check = Storage.has(key);
@@ -379,11 +374,6 @@ export function adminSendCoins(binaryArgs: StaticArray<u8>): void {
   const address = args.nextString().expect('Target address not entered.');
   const amount = args.nextU64().expect('Target amount not entered'); //nMAS
 
-  const scBalance = balance();
-  assert(
-    scBalance < amount,
-    'No funds were found for the amount you wanted to send.',
-  );
   transferCoins(new Address(address), amount);
 }
 
