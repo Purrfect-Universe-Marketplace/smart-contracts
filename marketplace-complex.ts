@@ -1,56 +1,11 @@
 /*
-Massexplo
-Marketplace - Complex Class - Item - Collection - Sell 
+Complex Class for NFT Marketplace
+- Bids 
+- Collections
+- Sell Offers
 */
 
 import { Serializable, Result, Args } from '@massalabs/as-types';
-
-export class ItemDetail implements Serializable {
-  constructor(
-    public name: string = '',
-    public symbol: string = '',
-    public address: string = '',
-    public baseURI: string = '',
-    public tokenURI: string = '',
-  ) {}
-
-  serialize(): StaticArray<u8> {
-    const args = new Args();
-
-    args.add<string>(this.name);
-    args.add<string>(this.symbol);
-    args.add<string>(this.address);
-    args.add<string>(this.baseURI);
-    args.add<string>(this.tokenURI);
-    return args.serialize();
-  }
-
-  deserialize(data: StaticArray<u8>, offset: i32): Result<i32> {
-    const args = new Args(data, offset);
-
-    const nameResult = args.nextString();
-    if (nameResult.isErr()) return new Result(0);
-    this.name = nameResult.unwrap();
-
-    const symbolResult = args.nextString();
-    if (symbolResult.isErr()) return new Result(0);
-    this.symbol = symbolResult.unwrap();
-
-    const addressResult = args.nextString();
-    if (addressResult.isErr()) return new Result(0);
-    this.address = addressResult.unwrap();
-
-    const baseURIResult = args.nextString();
-    if (baseURIResult.isErr()) return new Result(0);
-    this.baseURI = baseURIResult.unwrap();
-
-    const tokenURIResult = args.nextString();
-    if (tokenURIResult.isErr()) return new Result(0);
-    this.tokenURI = tokenURIResult.unwrap();
-
-    return new Result(args.offset);
-  }
-}
 
 export class CollectionDetail implements Serializable {
   constructor(
@@ -159,6 +114,41 @@ export class SellOffer implements Serializable {
     const createdTimeResult = args.nextU64();
     if (createdTimeResult.isErr()) return new Result(0);
     this.createdTime = createdTimeResult.unwrap();
+
+    return new Result(args.offset);
+  }
+}
+
+export class Bid implements Serializable {
+  constructor(
+    public bidder: string = '',
+    public amount: u64 = 0,
+    public timestamp: u64 = 0,
+  ) {}
+
+  serialize(): StaticArray<u8> {
+    const args = new Args();
+
+    args.add<string>(this.bidder);
+    args.add<u64>(this.amount);
+    args.add<u64>(this.timestamp);
+    return args.serialize();
+  }
+
+  deserialize(data: StaticArray<u8>, offset: i32): Result<i32> {
+    const args = new Args(data, offset);
+
+    const bidderResult = args.nextString();
+    if (bidderResult.isErr()) return new Result(0);
+    this.bidder = bidderResult.unwrap();
+
+    const amountResult = args.nextU64();
+    if (amountResult.isErr()) return new Result(0);
+    this.amount = amountResult.unwrap();
+
+    const timestampResult = args.nextU64();
+    if (timestampResult.isErr()) return new Result(0);
+    this.timestamp = timestampResult.unwrap();
 
     return new Result(args.offset);
   }
