@@ -3,6 +3,6 @@
 This repository includes: 
 
 - Marketplace smart contract
-- ERC721 contracts
+- Marketplace complex data's
 
 Live: https://purrfectuniverse.com
