@@ -9,14 +9,16 @@ import {
   call,
   Address,
   transferCoins,
+  isAddressEoa,
 } from '@massalabs/massa-as-sdk';
-import { Args, stringToBytes } from '@massalabs/as-types';
+import { Args, stringToBytes, byteToBool } from '@massalabs/as-types';
 import {
   _hasCollection,
   _keyGenerator,
   _getNFTOwner,
   calculateMarketplaceFee,
   BID_PREFIX,
+  _marketplaceOwner,
 } from './marketplace';
 import { u256 } from 'as-bignum/assembly';
 import { Bid } from '../utilities/marketplace-complex';
@@ -93,15 +95,14 @@ export function placeBid(binaryArgs: StaticArray<u8>): void {
     'Collection not found in marketplace',
   );
 
-  const key = _keyGenerator(collectionAddress, nftTokenId);
-
-  // Check if the sell offer exists
-  assert(Storage.has(stringToBytes(key)), "Sell offer doesn't exist");
-
   const bidder = Context.caller().toString();
   const bidTime = Context.timestamp();
 
   const bidKey = _bidKeyGenerator(collectionAddress, nftTokenId, bidder);
+  assert(
+    isAddressEoa(bidder),
+    'Smart contract is not allowed for place a bid.',
+  );
 
   // Refund if bid is available
   if (Storage.has(stringToBytes(bidKey))) {
@@ -183,8 +184,9 @@ export function acceptBid(binaryArgs: StaticArray<u8>): void {
   const nftTokenId = args.nextU256().expect('TokenID not entered.');
   const bidder = args.nextString().expect('Bidder address not entered.');
 
+  assert(isAddressEoa(bidder), 'Smart contract cant buy.');
+
   const bidKey = _bidKeyGenerator(collectionAddress, nftTokenId, bidder);
-  const sellOfferKey = _keyGenerator(collectionAddress, nftTokenId);
 
   assert(Storage.has(stringToBytes(bidKey)), 'Bid not found');
 
@@ -201,6 +203,16 @@ export function acceptBid(binaryArgs: StaticArray<u8>): void {
     'You are not the owner of the NFT',
   );
 
+  const approved = byteToBool(
+    call(
+      new Address(collectionAddress),
+      'isApprovedForAll',
+      new Args().add(owner).add(Context.callee().toString()),
+      0,
+    ),
+  );
+  assert(approved, 'Marketplace not approved for trading');
+
   // Transfer NFT to bidder
   call(
     new Address(collectionAddress),
@@ -213,6 +225,7 @@ export function acceptBid(binaryArgs: StaticArray<u8>): void {
   const feeAmount = calculateMarketplaceFee(bidData.amount);
   const remainingAmount = bidData.amount - feeAmount;
 
+  transferCoins(new Address(_marketplaceOwner()), feeAmount); // Transfer Marketplace Service Fee to Owner
   transferCoins(new Address(owner), remainingAmount);
   generateEvent(
     `${Context.caller().toString()} accepted a bid from ${bidder} on ${collectionAddress} token ${nftTokenId.toString()} for amount ${bidData.amount.toString()}`,
@@ -223,5 +236,8 @@ export function acceptBid(binaryArgs: StaticArray<u8>): void {
   // Reset all recent bids
   resetBids(collectionAddress, nftTokenId, bidder);
   // Remove sell offer
-  Storage.del(stringToBytes(sellOfferKey));
+  const sellOfferKey = _keyGenerator(collectionAddress, nftTokenId);
+  if (Storage.has(sellOfferKey)) {
+    Storage.del(stringToBytes(sellOfferKey));
+  }
 }
