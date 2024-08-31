@@ -1,6 +1,6 @@
 /**
  * Purrfect Universe
- * NFT Marketplace v2.1
+ * NFT Marketplace v2.2
  */
 import {
   Args,
@@ -19,6 +19,7 @@ import {
   sendMessage,
   setBytecode,
   transferCoins,
+  isAddressEoa,
 } from '@massalabs/massa-as-sdk';
 import {
   SellOffer,
@@ -38,10 +39,8 @@ export const COLLECTION_PREFIX = 'collection_';
 export const BID_PREFIX = 'bid_';
 
 //ASC Static Values
-export const buildnetTimestamp = 1704289800000;
-export const mainnetTimestamp = 1705312800000;
 
-export const genesisTimestamp = buildnetTimestamp; // genesis timestamp
+export const genesisTimestamp = 1705312800000; // genesis timestamp
 export const t0 = 16000;
 export const thread_count = 32;
 
@@ -64,6 +63,10 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
 // Common Functions
 function _onlyOwner(): bool {
   return Context.caller().toString() == Storage.get(MARKETPLACE_OWNER_KEY);
+}
+
+export function _marketplaceOwner(): string {
+  return Storage.get(MARKETPLACE_OWNER_KEY);
 }
 /**
  * Checks whether there is a collection
@@ -133,6 +136,11 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   const createdTime = Context.timestamp();
 
   assert(
+    isAddressEoa(creatorAddress),
+    'Smart contract address is not support.',
+  );
+
+  assert(
     expirationTime > Context.timestamp(),
     'The end time must be greater than the Context.timestamp()',
   );
@@ -183,8 +191,8 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   const endPeriod = startPeriod + 10;
   const endThread = 31 as u8;
 
-  const maxGas = 500_000_000; // gas for smart contract execution
-  const rawFee = 10_000_000; // 0.01 fee
+  const maxGas = 4_294_967_295; // gas for smart contract execution
+  const rawFee = 40_000_000; // 0.04 fee
   const coins = 0;
 
   const scaddr = Context.callee();
@@ -277,6 +285,8 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
   const owner = _getNFTOwner(collectionAddress, nftTokenId);
   const address = Context.caller().toString();
 
+  assert(isAddressEoa(address), 'Smart contract cant buy.');
+
   // PURCHASED, TOKEN SENDED TO NEW OWNER
   call(
     new Address(collectionAddress),
@@ -288,7 +298,8 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
   const feeAmount = calculateMarketplaceFee(sellOfferData.price);
   const remainingCoins = sellOfferData.price - feeAmount;
 
-  transferCoins(new Address(owner), remainingCoins);
+  transferCoins(new Address(_marketplaceOwner()), feeAmount); // Transfer Marketplace Service Fee to Owner
+  transferCoins(new Address(owner), remainingCoins); // Transfer NFT Price
   generateEvent(
     `${Context.caller().toString()} bought this ${nftTokenId.toString()} NFT at this ${sellOfferData.price.toString()} price`,
   );
@@ -308,7 +319,7 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   const tokenID = args.nextU256().expect('TokenID not entered.');
 
   const caller = Context.caller().toString();
-  assert(caller == Context.callee().toString(), 'You are not SC.');
+  assert(caller == Context.callee().toString(), 'You are not root SC.');
 
   const key = _keyGenerator(collectionAddress, tokenID);
   const check = Storage.has(key);
@@ -316,6 +327,7 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
 
   resetBids(collectionAddress, tokenID, '');
   Storage.del(stringToBytes(key));
+  generateEvent(key + ' expired and removed');
 }
 
 /**
@@ -486,3 +498,10 @@ export function upgradeSmartContract(newBytecode: StaticArray<u8>): void {
   assert(_onlyOwner(), 'The caller is not the owner of the contract');
   setBytecode(newBytecode);
 }
+
+/**
+ * Receive some coins
+ * @param binaryArgs
+ *
+ */
+export function receiveCoins(binaryArgs: StaticArray<u8>): void {}
