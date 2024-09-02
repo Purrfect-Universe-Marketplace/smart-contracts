@@ -191,8 +191,8 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   const endPeriod = startPeriod + 10;
   const endThread = 31 as u8;
 
-  const maxGas = 4_294_967_295; // gas for smart contract execution
-  const rawFee = 40_000_000; // 0.04 fee
+  const maxGas = 1_000_000_000; // gas for smart contract execution
+  const rawFee = 50_000_000; // 0.05 fee
   const coins = 0;
 
   const scaddr = Context.callee();
@@ -207,6 +207,12 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
     rawFee,
     coins,
     new Args().add(collectionAddress).add(nftTokenId).serialize(),
+  );
+  generateEvent(
+    'autonomous remove started for the ' +
+      collectionAddress +
+      '_' +
+      nftTokenId.toString(),
   );
 }
 /**
@@ -325,7 +331,7 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   const check = Storage.has(key);
   assert(check, 'sell offer not found');
 
-  resetBids(collectionAddress, tokenID, '');
+  // resetBids(collectionAddress, tokenID, ''); //DONT REMOVE BIDS
   Storage.del(stringToBytes(key));
   generateEvent(key + ' expired and removed');
 }
