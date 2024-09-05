@@ -184,15 +184,13 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
 
   //send ASC Message for delete when time is up
   const startPeriod = floor((expirationTime - genesisTimestamp) / t0);
-  const startThread = floor(
-    (expirationTime - genesisTimestamp - startPeriod * t0) /
-      (t0 / thread_count),
-  ) as u8;
-  const endPeriod = startPeriod + 10;
-  const endThread = 31 as u8;
 
-  const maxGas = 1_000_000_000; // gas for smart contract execution
-  const rawFee = 50_000_000; // 0.05 fee
+  const startThread = Context.currentThread();
+  const endPeriod = startPeriod + 10;
+  const endThread = Context.currentThread();
+
+  const maxGas = 10_000_000; // gas for smart contract execution
+  const rawFee = 30_000_000; // 0.03 fee
   const coins = 0;
 
   const scaddr = Context.callee();
