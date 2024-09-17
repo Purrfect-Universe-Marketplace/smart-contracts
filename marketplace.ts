@@ -183,7 +183,8 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
   Storage.set(stringToBytes(key), newSellOffer.serialize());
 
   //send ASC Message for delete when time is up
-  const startPeriod = floor((expirationTime - genesisTimestamp) / t0);
+  const nbPeriod = floor((expirationTime - Context.timestamp()) / t0);
+  const startPeriod = Context.currentPeriod() + nbPeriod;
 
   const startThread = Context.currentThread();
   const endPeriod = startPeriod + 10;
@@ -191,7 +192,6 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
 
   const maxGas = 10_000_000; // gas for smart contract execution
   const rawFee = 30_000_000; // 0.03 fee
-  const coins = 0;
 
   const scaddr = Context.callee();
   sendMessage(
@@ -203,14 +203,20 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
     endThread,
     maxGas,
     rawFee,
-    coins,
+    0,
     new Args().add(collectionAddress).add(nftTokenId).serialize(),
   );
   generateEvent(
-    'autonomous remove started for the ' +
-      collectionAddress +
-      '_' +
-      nftTokenId.toString(),
+    'DEBUG_v1: START_PERIOD:' +
+      startPeriod.toString() +
+      ' START_THREAD: ' +
+      startThread.toString() +
+      ' END_PERIOD: ' +
+      endPeriod.toString() +
+      'END_THREAD :' +
+      endThread.toString() +
+      'EXPIRATION_TIME : ' +
+      expirationTime.toString(),
   );
 }
 /**
