@@ -1,5 +1,5 @@
 /*
- * Purrfect Marketplace
+ * Purrfect NFT Marketplace
  * Bids System
  */
 import {
