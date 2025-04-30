@@ -3,9 +3,11 @@ Complex Class for NFT Marketplace
 - Bids 
 - Collections
 - Sell Offers
+- Sell Offers With Pur
 */
 
 import { Serializable, Result, Args } from '@massalabs/as-types';
+import { u256 } from 'as-bignum/assembly';
 
 export class CollectionDetail implements Serializable {
   constructor(
@@ -74,6 +76,8 @@ export class SellOffer implements Serializable {
     public creatorAddress: string = '',
     public expirationTime: u64 = 0,
     public createdTime: u64 = 0,
+    public tokenBuy: bool = false,
+    public tokenPrice: u256 = new u256(0),
   ) {}
 
   serialize(): StaticArray<u8> {
@@ -85,6 +89,8 @@ export class SellOffer implements Serializable {
     args.add<string>(this.creatorAddress);
     args.add<u64>(this.expirationTime);
     args.add<u64>(this.createdTime);
+    args.add<bool>(this.tokenBuy);
+    args.add<u256>(this.tokenPrice);
     return args.serialize();
   }
 
@@ -114,6 +120,14 @@ export class SellOffer implements Serializable {
     const createdTimeResult = args.nextU64();
     if (createdTimeResult.isErr()) return new Result(0);
     this.createdTime = createdTimeResult.unwrap();
+
+    const tokenBuyResult = args.nextBool();
+    if (tokenBuyResult.isErr()) return new Result(0);
+    this.tokenBuy = tokenBuyResult.unwrap();
+
+    const tokenPriceResult = args.nextU256();
+    if (tokenPriceResult.isErr()) return new Result(0);
+    this.tokenPrice = tokenPriceResult.unwrap();
 
     return new Result(args.offset);
   }
