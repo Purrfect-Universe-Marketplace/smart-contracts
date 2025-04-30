@@ -1,6 +1,6 @@
 /**
  * Purrfect Universe
- * NFT Marketplace v2.2
+ * NFT Marketplace v4.0
  */
 import {
   Args,
@@ -30,6 +30,7 @@ import { u256 } from 'as-bignum/assembly';
 import { resetBids, _bidKeyGenerator } from './bids';
 
 export * from './bids'; // Bids System
+export * from './tokenOffers'; // Token Payment System
 
 //Common Values
 export const MARKETPLACE_OWNER_KEY = 'MARKETPLACE_OWNER';
@@ -37,12 +38,12 @@ export const MARKETPLACE_FEE_KEY = stringToBytes('MARKETPLACE_FEE');
 export const SELL_OFFER_PREFIX = 'sellOffer_';
 export const COLLECTION_PREFIX = 'collection_';
 export const BID_PREFIX = 'bid_';
+export const TOKEN_PREFIX = 'token_';
 
 //ASC Static Values
 
 export const genesisTimestamp = 1705312800000; // genesis timestamp
-export const t0 = 16000;
-export const thread_count = 32;
+export const t0: u64 = 16;
 
 // @custom:security-contact altailabs
 export function constructor(binaryArgs: StaticArray<u8>): void {
@@ -54,15 +55,121 @@ export function constructor(binaryArgs: StaticArray<u8>): void {
   const marketplaceFee = args
     .nextU64()
     .expect('Marketplace Fee is not entered');
+  const tokenScAddress = args
+    .nextString()
+    .expect('Token SC Address is not entered');
 
   Storage.set(MARKETPLACE_FEE_KEY, u64ToBytes(marketplaceFee));
   Storage.set(MARKETPLACE_OWNER_KEY, Context.caller().toString());
+  Storage.set(TOKEN_PREFIX, tokenScAddress);
   generateEvent('Purrfect NFT Marketplace is deployed.');
+}
+
+/**
+ * Schedules an autonomous deletion message for a sell offer.
+ * @param expirationTime - The timestamp when the offer expires (u64)
+ * @param collectionAddress - The address of the NFT collection (string)
+ * @param nftTokenId - The token ID of the NFT (u256)
+ */
+export function scheduleOfferDeletion(
+  expirationTime: u64,
+  collectionAddress: string,
+  nftTokenId: u256,
+): void {
+  // 1) Past tense control
+  assert(
+    expirationTime > Context.timestamp(),
+    'Expiration must be in the future',
+  );
+
+  // 2) Calculate how many periods to skip forward (by integer division)
+  const now: u64 = Context.timestamp();
+  const delta: u64 = expirationTime - now;
+
+  // Ensure t0 is correct and handle edge cases
+  const t0: u64 = 16; // Slot period duration
+  const nbPeriods: u64 = delta / t0;
+
+  // Add safety margin for period calculation
+  const safetyMargin: u64 = 2; // Additional periods for safety
+  const nbPeriodsWithMargin: u64 = nbPeriods + safetyMargin;
+
+  // 3) Specify start and end slots (period + thread)
+  const startPeriod: u64 = Context.currentPeriod() + nbPeriodsWithMargin;
+  const startThread: u8 = Context.currentThread() as u8;
+  const endPeriod: u64 = startPeriod + 20; // Increased window for execution
+  const endThread: u8 = startThread;
+
+  // 4) Gas and fee settings - increased for reliability
+  const maxGas: u64 = 20_000_000; // Increased gas limit
+  const rawFee: u64 = 50_000_000; // Increased fee
+  const coins: u64 = 0;
+
+  // 5) Prepare message parameters
+  const payload = new Args().add(collectionAddress).add(nftTokenId).serialize();
+
+  // 6) Log the scheduling attempt
+  generateEvent(
+    `Scheduling deletion for NFT ${nftTokenId.toString()} at period ${startPeriod.toString()}`,
+  );
+
+  // 7) Send the message with increased parameters
+  const scAddr = Context.callee();
+  sendMessage(
+    scAddr,
+    'autonomousDeleteOffer',
+    startPeriod,
+    startThread,
+    endPeriod,
+    endThread,
+    maxGas,
+    rawFee,
+    coins,
+    payload,
+    new Address(),
+    new StaticArray<u8>(0),
+  );
+
+  // 8) Log successful scheduling
+  generateEvent(
+    `Deletion scheduled for NFT ${nftTokenId.toString()} successfully`,
+  );
 }
 
 // Common Functions
 function _onlyOwner(): bool {
   return Context.caller().toString() == Storage.get(MARKETPLACE_OWNER_KEY);
+}
+
+/**
+ * Send NFT
+ *
+ * @param binaryArgs - serialized StaticArray<u8> containing
+ * - Collection Address (String)
+ * - from (String)
+ * - to (String)
+ * - Token ID (u256)
+ */
+export function sendNFT(
+  collectionAddress: string,
+  from: string,
+  to: string,
+  tokenId: u256,
+): void {
+  call(
+    new Address(collectionAddress),
+    'transferFrom',
+    new Args().add(from).add(to).add(tokenId),
+    0,
+  );
+}
+
+/**
+ * Get Token Address
+ * @returns string
+ */
+export function _getTokenAddress(): string {
+  return Storage.get(TOKEN_PREFIX);
 }
 
 export function _marketplaceOwner(): string {
@@ -110,7 +217,7 @@ export function calculateMarketplaceFee(amount: u64): u64 {
 }
 
 /**
- * Add new sell offer
+ * Add standart sell offer
  *
  * @param binaryArgs - serialized StaticArray<u8> containing
  * - collection address (String)
@@ -178,46 +285,17 @@ export function sellOffer(binaryArgs: StaticArray<u8>): void {
     creatorAddress,
     expirationTime,
     createdTime,
+    false,
+    new u256(0),
   );
 
   Storage.set(stringToBytes(key), newSellOffer.serialize());
 
-  //send ASC Message for delete when time is up
-  const nbPeriod = floor((expirationTime - Context.timestamp()) / t0);
-  const startPeriod = Context.currentPeriod() + nbPeriod;
-
-  const startThread = Context.currentThread();
-  const endPeriod = startPeriod + 10;
-  const endThread = Context.currentThread();
-
-  const maxGas = 10_000_000; // gas for smart contract execution
-  const rawFee = 30_000_000; // 0.03 fee
-
-  const scaddr = Context.callee();
-  sendMessage(
-    scaddr,
-    'autonomousDeleteOffer',
-    startPeriod,
-    startThread,
-    endPeriod,
-    endThread,
-    maxGas,
-    rawFee,
-    0,
-    new Args().add(collectionAddress).add(nftTokenId).serialize(),
-  );
   generateEvent(
-    'DEBUG_v1: START_PERIOD:' +
-      startPeriod.toString() +
-      ' START_THREAD: ' +
-      startThread.toString() +
-      ' END_PERIOD: ' +
-      endPeriod.toString() +
-      'END_THREAD :' +
-      endThread.toString() +
-      'EXPIRATION_TIME : ' +
-      expirationTime.toString(),
+    `${Context.caller().toString()} added a sell offer for ${nftTokenId.toString()} NFT at ${price.toString()} price`,
   );
+  // Send ASC Message to delete the offer when it expires
+  scheduleOfferDeletion(expirationTime, collectionAddress, nftTokenId);
 }
 /**
  * Remove current sell offer
@@ -245,13 +323,12 @@ export function removeSellOffer(binaryArgs: StaticArray<u8>): void {
   const owner = _getNFTOwner(collectionAddress, nftTokenId);
   assert(owner == Context.caller().toString(), 'You are not the owner of NFT');
 
-  resetBids(collectionAddress, nftTokenId, ''); // Reset active bids
   Storage.del(stringToBytes(key));
   generateEvent('REMOVE_SELL_OFFER : ' + Context.caller().toString());
 }
 
 /**
- * Direct Buy Offer
+ * Direct Buy Offer ( only MAS )
  *
  * @param binaryArgs - serialized StaticArray<u8> containing
  * - collection address (String)
@@ -278,7 +355,7 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
 
   const storedData = Storage.get(stringToBytes(key));
   const offset: i32 = 0;
-  const sellOfferData = new SellOffer('', '', 0, '', 0, 0);
+  const sellOfferData = new SellOffer('', '', 0, '', 0, 0, false, new u256(0));
   const deserializeResult = sellOfferData.deserialize(storedData, offset);
 
   assert(deserializeResult.isOk(), 'DESERIALIZATION_ERROR');
@@ -297,19 +374,14 @@ export function buyOffer(binaryArgs: StaticArray<u8>): void {
 
   assert(isAddressEoa(address), 'Smart contract cant buy.');
 
-  // PURCHASED, TOKEN SENDED TO NEW OWNER
-  call(
-    new Address(collectionAddress),
-    'transferFrom',
-    new Args().add(owner).add(address).add(nftTokenId),
-    10_000_000, //0.01MAS
-  );
+  // PURCHASED, NFT SENDED TO NEW OWNER
+  sendNFT(collectionAddress, owner, address, nftTokenId);
 
   const feeAmount = calculateMarketplaceFee(sellOfferData.price);
   const remainingCoins = sellOfferData.price - feeAmount;
 
-  transferCoins(new Address(_marketplaceOwner()), feeAmount); // Transfer Marketplace Service Fee to Owner
-  transferCoins(new Address(owner), remainingCoins); // Transfer NFT Price
+  transferCoins(new Address(_marketplaceOwner()), feeAmount); // Transfer Marketplace Service Fee to Admin
+  transferCoins(new Address(owner), remainingCoins); // Transfer NFT Price to old owner
   generateEvent(
     `${Context.caller().toString()} bought this ${nftTokenId.toString()} NFT at this ${sellOfferData.price.toString()} price`,
   );
@@ -335,7 +407,6 @@ export function autonomousDeleteOffer(binaryArgs: StaticArray<u8>): void {
   const check = Storage.has(key);
   assert(check, 'sell offer not found');
 
-  // resetBids(collectionAddress, tokenID, ''); //DONT REMOVE BIDS
   Storage.del(stringToBytes(key));
   generateEvent(key + ' expired and removed');
 }
@@ -452,7 +523,6 @@ export function adminDeleteOffer(binaryArgs: StaticArray<u8>): void {
 
   const key = _keyGenerator(collectionAddress, nftTokenId);
 
-  resetBids(collectionAddress, nftTokenId, ''); // Reset active bids
   Storage.del(stringToBytes(key)); // Remove sell offer
 }
 
@@ -497,6 +567,20 @@ export function adminChangeMarketplaceFee(binaryArgs: StaticArray<u8>): void {
   const newFee = args.nextU64().expect('Marketplace new fee not entered.');
 
   Storage.set(MARKETPLACE_FEE_KEY, u64ToBytes(newFee));
+}
+/**
+ * - Admin set token address
+ * @param binaryArgs
+ * @returns
+ * void
+ * @requires
+ * Only owner can add
+ */
+export function adminSetTokenAddress(binaryArgs: StaticArray<u8>): void {
+  assert(_onlyOwner(), 'The caller is not the owner of the contract');
+  const args = new Args(binaryArgs);
+  const tokenAddress = args.nextString().expect('Token address not entered.');
+  Storage.set(TOKEN_PREFIX, tokenAddress);
 }
 
 /**
